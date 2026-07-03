@@ -1,0 +1,42 @@
+# macOS and editor noise
+.DS_Store
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Local credentials and private settings
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+
+# Local generated outputs and private work logs
+song-projects/
+outputs/
+exports/
+downloads/
+tmp/
+temp/
+logs/
+.task-loop/
+.local-loop/
+
+# Do not commit browser/account state
+cookies.json
+session.json
+*.sqlite
+*.db

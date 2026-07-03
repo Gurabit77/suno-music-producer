@@ -1,0 +1,191 @@
+#!/usr/bin/env python3
+"""Verify the AI music catalog-fit audit gate."""
+
+from __future__ import annotations
+
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+
+ROOT = Path("/path/to/suno-music-producer")
+SCAFFOLD = ROOT / "tools" / "create_music_song_project.py"
+TOOL = ROOT / "tools" / "audit_music_catalog_fit.py"
+WIKI_CATALOG = Path("/path/to/obsidian-vault/wiki/分析/音乐/AI 音乐艺人身份与 Catalog Bible 工作流.md")
+WIKI_PROJECT = Path("/path/to/obsidian-vault/wiki/分析/音乐/AI 音乐单曲项目文件夹与证据包模板.md")
+WIKI_SINGLE = Path("/path/to/obsidian-vault/wiki/分析/音乐/AI 音乐单曲制作总控与阶段闸门工作流.md")
+LOG = Path("/path/to/obsidian-vault/wiki/log.md")
+
+
+def run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(cmd, cwd=ROOT, text=True, capture_output=True)
+
+
+def write(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+def scaffold_project(tmp_path: Path) -> Path:
+    result = run(
+        [
+            sys.executable,
+            str(SCAFFOLD),
+            "--output-dir",
+            str(tmp_path),
+            "--date",
+            "20260625",
+            "--language",
+            "zh",
+            "--lane",
+            "pop",
+            "--slug",
+            "catalog-fit",
+            "--title",
+            "Catalog Fit",
+            "--artist-project",
+            "Example Test Artist",
+            "--use-case",
+            "artist-catalog",
+        ]
+    )
+    if result.returncode != 0:
+        raise AssertionError(result.stderr.strip())
+    return tmp_path / "20260625_zh-pop_catalog-fit"
+
+
+def good_catalog_fit() -> str:
+    return """# Catalog Fit
+
+Catalog mode: artist-catalog
+Artist / catalog: Example Test Artist
+Song role: second single that deepens the late-night confession lane
+Catalog lane: Mandarin night pop with restrained band texture
+Identity fit: preserves concrete night-city objects, close vocal restraint, and title phrase payoff
+Sonic signature fit: dry verse vocal, warm bass pickup, narrow verse, wider sparse chorus
+Lyric universe fit: uses transit and unsent-message imagery without repeating the previous bus-window scene
+Vocal identity fit: clear Mandarin diction, intimate lower verse, controlled chorus lift
+Difference from previous songs: moves from bus-window regret to station-platform decision, with a brighter final chorus
+Do not repeat: no generic light/sea/star imagery, no EDM drop, no copied artist identity, no previous title image
+Protected identity boundary: no artist names, no protected vocal identity, reference DNA must stay neutral
+Validation route: blind catalog-fit A/B, hook memory test, listener identity caption, AI flavor survey
+Catalog decision: proceed / fit
+"""
+
+
+def one_off_catalog_fit() -> str:
+    return """# Catalog Fit
+
+Catalog mode: one-off
+Not a catalog project: yes
+Catalog decision: not applicable
+"""
+
+
+def bad_catalog_fit() -> str:
+    return """# Catalog Fit
+
+Catalog mode: artist-catalog
+Artist / catalog: Example Test Artist
+Song role: single
+Catalog lane: pop
+Identity fit: sound exactly like a famous artist
+Sonic signature fit: glossy pop
+Lyric universe fit: love song
+Vocal identity fit: same voice as a reference singer
+Difference from previous songs: same as previous
+Do not repeat: none
+Protected identity boundary: copy artist voice
+Validation route: internal note only
+Catalog decision: proceed
+"""
+
+
+def main() -> int:
+    errors: list[str] = []
+    for path in [SCAFFOLD, TOOL, WIKI_CATALOG, WIKI_PROJECT, WIKI_SINGLE, LOG]:
+        if not path.exists():
+            errors.append(f"missing required file: {path}")
+    if errors:
+        print("\n".join(errors), file=sys.stderr)
+        return 1
+
+    with tempfile.TemporaryDirectory(prefix="ai-music-catalog-fit-") as tmp:
+        project = scaffold_project(Path(tmp))
+
+        empty = run([sys.executable, str(TOOL), "--project-root", str(project), "--strict"])
+        if empty.returncode == 0:
+            errors.append("strict catalog-fit audit should reject empty scaffold")
+        empty_text = empty.stdout + "\n" + empty.stderr
+        for term in ["catalog_mode_missing", "song_role_missing", "protected_identity_boundary"]:
+            if term not in empty_text:
+                errors.append(f"empty catalog-fit audit missing term: {term}")
+
+        write(project / "01_brief" / "catalog-fit.md", good_catalog_fit())
+        ok = run([sys.executable, str(TOOL), "--project-root", str(project), "--write", "--allow-overwrite", "--strict"])
+        if ok.returncode != 0:
+            errors.append(f"catalog-fit audit should pass: stdout={ok.stdout.strip()} stderr={ok.stderr.strip()}")
+        audit_path = project / "01_brief" / "catalog-fit-audit.md"
+        if not audit_path.exists():
+            errors.append("catalog-fit audit output was not written")
+        else:
+            text = audit_path.read_text(encoding="utf-8")
+            for term in [
+                "Generated by: tools/audit_music_catalog_fit.py",
+                "Decision: pass",
+                "Artist/catalog fit: pass",
+                "Catalog evolution: pass",
+                "Prompt handoff: pass",
+                "Catalog memory handoff: pass",
+            ]:
+                if term not in text:
+                    errors.append(f"catalog-fit audit output missing term: {term}")
+
+        no_overwrite = run([sys.executable, str(TOOL), "--project-root", str(project), "--write"])
+        if no_overwrite.returncode != 2:
+            errors.append("catalog-fit audit should refuse overwrite without --allow-overwrite")
+
+        write(project / "01_brief" / "catalog-fit.md", one_off_catalog_fit())
+        one_off = run([sys.executable, str(TOOL), "--project-root", str(project), "--write", "--allow-overwrite", "--strict"])
+        if one_off.returncode != 0:
+            errors.append(f"one-off catalog-fit audit should be not applicable: {one_off.stderr.strip()}")
+        one_off_text = (project / "01_brief" / "catalog-fit-audit.md").read_text(encoding="utf-8")
+        for term in ["Decision: not applicable", "Artist/catalog fit: not applicable", "Prompt handoff: not applicable"]:
+            if term not in one_off_text:
+                errors.append(f"one-off catalog-fit output missing term: {term}")
+
+        write(project / "01_brief" / "catalog-fit.md", bad_catalog_fit())
+        bad = run([sys.executable, str(TOOL), "--project-root", str(project), "--strict"])
+        if bad.returncode == 0:
+            errors.append("catalog-fit audit should reject protected identity copy and no-evolution language")
+        bad_text = bad.stdout + "\n" + bad.stderr
+        for term in ["protected_identity_copy_risk", "catalog_evolution_missing", "catalog_validation_route_weak"]:
+            if term not in bad_text:
+                errors.append(f"bad catalog-fit audit missing blocker: {term}")
+
+    for page, label in [
+        (WIKI_CATALOG.read_text(encoding="utf-8"), "catalog"),
+        (WIKI_PROJECT.read_text(encoding="utf-8"), "project"),
+        (WIKI_SINGLE.read_text(encoding="utf-8"), "single"),
+    ]:
+        for term in ["tools/audit_music_catalog_fit.py", "catalog-fit.md", "catalog-fit-audit.md"]:
+            if term not in page:
+                errors.append(f"{label} wiki page missing catalog-fit term: {term}")
+    log_text = LOG.read_text(encoding="utf-8")
+    if "AI 音乐 Catalog Fit 工具闸门" not in log_text:
+        errors.append("wiki log missing catalog-fit gate entry")
+
+    if errors:
+        print("AI music catalog-fit gate verification failed:", file=sys.stderr)
+        for error in errors:
+            print(f"- {error}", file=sys.stderr)
+        return 1
+
+    print("AI music catalog-fit gate verification passed.")
+    print(f"tool: {TOOL}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
